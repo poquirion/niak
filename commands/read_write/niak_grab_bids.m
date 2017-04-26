@@ -1,6 +1,6 @@
 function files = niak_grab_bids(path_data,opt)
-% Grab the T1+fMRI datasets of BIDS (http://bids.neuroimaging.io/) database to process with the 
-% NIAK fMRI preprocessing.
+% Grab the T1+fMRI scans in a BIDS dataset 
+% http://bids.neuroimaging.io
 %
 % SYNTAX:
 % FILES = NIAK_GRAB_BIDS(PATH_DATA,FILTER)
@@ -20,7 +20,7 @@ function files = niak_grab_bids(path_data,opt)
 %   NIAK_PIPELINE_FMRI_PREPROCESS :
 %
 %       <SUBJECT>.FMRI.<SESSION>.<RUN>
-%          (cell of strings) a list of fMRI datasets, acquired in the 
+%          (string) a list of fMRI datasets, acquired in the 
 %          same session (small displacements). 
 %          The field names <SUBJECT> and <SESSION> can be any arbitrary 
 %          strings. The <RUN> input is optional
@@ -34,8 +34,8 @@ function files = niak_grab_bids(path_data,opt)
 %   FMRI_HINT
 %       (string) A hint to pick one out of many fmri input for exemple 
 %       if the fmri study includes "sub-XX_task-rest-somthing_bold.nii.gz" 
-%       and "sub-XX_task-rest-a_thing_bold.nii.gz" and the somthing flavor 
-%       needs to be selected, FMRI_HINT = 'somthing', would do the trick.
+%       and "sub-XX_task-rest-a_thing_bold.nii.gz" and the something flavor 
+%       needs to be selected, FMRI_HINT = 'something', would do the trick.
 %       Note that FMRI_HINT needs to be a string somewhere between 
 %       "task-rest" and the extention (.nii or .mnc)
 %
@@ -45,6 +45,7 @@ function files = niak_grab_bids(path_data,opt)
 %       with T1 is given this file will be picked. If two file are present,
 %       "sub-11_T1.nii.gz" and "sub-11_T1w.nii.gz" and you need to select the
 %       "sub-11_T1.nii.gz" then the hint "T1."  will do the trick. 
+%
 %   TASK_TYPE
 %       (string, default = rest) The type of task, explicitely name in bids 
 %       file name
@@ -52,8 +53,9 @@ function files = niak_grab_bids(path_data,opt)
 %   MAX_SUBJECTS
 %       (int, default = 0) 0 return all subjects. Used to put an upper limit
 %       on the number of subjects that are returned.
+%
 %   SUBJECT_LIST
-%       (cellarray of int) The only subject to be retured
+%       (cellarray of int) The only subject to be returned
 %   
 % _________________________________________________________________________
 % SEE ALSO:
@@ -62,15 +64,13 @@ function files = niak_grab_bids(path_data,opt)
 % _________________________________________________________________________
 % COMMENTS:
 %
-% This "data grabber" is designed to work with the ABIDE database:
-% 
-% Copyright (c) Pierre Bellec, P-O Quirion
-%               Centre de recherche de l'institut de Gériatrie de Montréal,
-%               Département d'informatique et de recherche opérationnelle,
-%               Université de Montréal, 2016.
+% Copyright (c) P-O Quirion, Pierre Bellec
+%               Centre de recherche de l'institut de Griatrie de Montral,
+%               Dpartement d'informatique et de recherche oprationnelle,
+%               Universit de Montral, 2016-17.
 % Maintainer : poq@criugm.qc.ca
 % See licensing information in the code.
-% Keywords : clustering, stability, bootstrap, time series
+% Keywords : grabber, brain imaging data structure
 
 % Permission is hereby granted, free of charge, to any person obtaining a copy
 % of this software and associated documentation files (the "Software"), to deal
@@ -90,6 +90,13 @@ function files = niak_grab_bids(path_data,opt)
 % OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 % THE SOFTWARE.
 
+% Prepare the path for the BIDS data
+if nargin == 0
+    path_data = pwd;
+end
+path_data = niak_full_path(path_data);
+
+fprintf(1,"Reading Bids structure %s\n", path_data)
 % If no path given, search local dir
 if (nargin < 1)||isempty(path_data)
     path_data = [pwd filesep];
@@ -150,7 +157,7 @@ for num_f = 1:length(list_dir)
         if ~isempty(dir_name)
             sub_id = dir_name{1}{1,2};
             % Condition to return only subject in subject list
-            if iscell(subject_list) && ~any([subject_list{:}]==str2num(sub_id))
+            if ~isa(subject_list,'numeric') && ~any([subject_list{:}]==str2num(sub_id))
                 continue
             end
         else
@@ -175,11 +182,11 @@ for num_f = 1:length(list_dir)
         for n_ses = 1:length(all_sessions(:,1))
             if all_sessions{1} == '0'
                 session_path = strcat(path_data, subject_dir);
-                session_id = "1";
+                session_id = "sess-1";
                 no_session = true;
             else
                 ses_name = all_sessions(n_ses,1){1}   ;         
-                session_id = all_sessions(n_ses,2){1};
+                session_id = ["sess-" all_sessions(n_ses,2){1}];
                 session_path = strcat(path_data, subject_dir, filesep, ses_name);
                 no_session = false;
             end
@@ -187,7 +194,7 @@ for num_f = 1:length(list_dir)
             anat_path = strcat(session_path, filesep, 'anat');
             fmri_path = strcat(session_path, filesep, 'func');
             fmri_regex = [ "(", subject_dir ".*task-", task_type ,".*", fmri_hint, ".*\.(nii|mnc).*)"];
-            anat_regex = ['(', subject_dir, '_T1w.*', anat_hint, '.*\.(nii|mnc).*)'] ;
+            anat_regex = ['(', subject_dir, '.*_T1w.*', anat_hint, '.*\.(nii|mnc).*)'] ;
             list_anat_dir = dir(anat_path) ;
             list_fmri_dir = dir(fmri_path) ;
             
@@ -206,9 +213,9 @@ for num_f = 1:length(list_dir)
                     run_num = regexpi(m{1}{1}, func_run_regex, 'tokens') ;
                     full_path = strcat(fmri_path, filesep, m{1}{1});
                     if length(run_num)
-                        fmri.(session_id).(run_num{1}{1}) = full_path ;
+                        fmri.(session_id).(['task-' task_type '_run-' run_num{1}{1}]) = full_path ;
                     else
-                        fmri.(session_id) = full_path ;           
+                        fmri.(session_id).(['task-' task_type]) = full_path ;           
                     end
                 end
             end
@@ -218,8 +225,8 @@ for num_f = 1:length(list_dir)
         % TODO figure out a way to pick the right anat file if there is more thant one 
         if length(anat_match)             
             anat= anat_match{1} ;
-            %% TODO add more fiters options  
-            % only resurt subject is anat and one func is found        
+            %% TODO add more filters options
+            % only return subject if anat and one func is found
             if exist('fmri')
                 files.(subject_dir).anat = anat;
                 files.(subject_dir).fmri = fmri;

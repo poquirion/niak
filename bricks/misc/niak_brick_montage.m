@@ -9,8 +9,9 @@ function [in,out,opt] = niak_brick_montage(in,out,opt)
 %   i.e. the volume is resamples to have no direction cosines. 
 % OUT.MONTAGE (string) the file name for the figure. The extension will determine the type. 
 % OUT.COLORMAP (string) the file name for a figure with the color map. 
-% OUT.QUANTIZATION (string) the file name for a .mat file with a variable DATA. 
+% OUT.QUANTIZATION (string) the file name for a .mat file with variables DATA and SIZE_SLICE. 
 %   DATA(N) is the data point associated with the Nth color. 
+%   SIZE_SLICE (vector 1x2) the size of a slice. 
 % OPT.NB_SLICES (scalar, default Inf) the number of slices to produce (with a parameter
 %   Inf, all possible slices will be generated). 
 % OPT.COLORMAP (string, default 'gray') The type of colormap. Anything supported by 
@@ -142,14 +143,14 @@ end
 climits = opt.limits;
 
 %% Generate colormap
-img(img>climits(2)) = climits(2);
-img(img<climits(1)) = climits(1);
 if opt.nb_color < Inf
     bins = linspace(climits(1),climits(2),opt.nb_color);
+    delta = (bins(2)-bins(1))/2;
+    bins = [bins(1)-delta,bins+delta];
 else
     bins = unique(img(:));
 end
-opt.nb_color = length(bins);
+opt.nb_color = length(bins)-1;
 
 switch opt.colormap
 	case 'hot_cold'   
@@ -170,7 +171,7 @@ switch opt.colormap
 end
 
 %% build the image
-[tmp,idx] = histc(img,bins);
+[tmp,idx] = histc(img(:),bins);
 idx(idx==0) = 1;
 rgb = zeros([size(img),3]);
 rgb(:,:,1) = reshape(cm(idx(:),1),size(img));
@@ -188,7 +189,7 @@ if ~strcmp(out.colormap,'gb_niak_omitted')
     rgb = zeros(1,size(cm,1),size(cm,2));
     rgb(1,:,:) = cm;
     if ~isempty(opt.thresh)
-        rgb = rgb(1,bins>opt.thresh,:);
+        rgb = rgb(1,bins(2:end)>=opt.thresh,:);
     end
     imwrite(rgb,out.colormap,'quality',opt.quality);
 end
@@ -196,6 +197,6 @@ end
 %% Saving the quantization data
 if ~strcmp(out.quantization,'gb_niak_omitted')
     data = bins;
-    nb_slices = dim_v([1 3 2]);
-    save(out.quantization,'data','nb_slices');    
+    size_slice = dim_v([3 2]);
+    save(out.quantization,'data','size_slice');    
 end
